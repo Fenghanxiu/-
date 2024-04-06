@@ -1,0 +1,93 @@
+C51 COMPILER V9.60.0.0   UART                                                              04/06/2024 22:03:37 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE UART
+OBJECT MODULE PLACED IN .\Objects\uart.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE uart.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\uart
+                    -.lst) OBJECT(.\Objects\uart.obj)
+
+line level    source
+
+   1          #include "uart.h"
+   2          
+   3          void UartInit(void)             //4800bps@12.000MHz
+   4          {
+   5   1              SCON = 0x50;            //8位数据,可变波特率
+   6   1              AUXR |= 0x01;           //串口1选择定时器2为波特率发生器
+   7   1              AUXR |= 0x04;           //定时器时钟1T模式
+   8   1              T2L = 0x8F;             //设置定时初始值
+   9   1              T2H = 0xFD;             //设置定时初始值
+  10   1              AUXR |= 0x10;           //定时器2开始计时
+  11   1              ES = 1;
+  12   1              EA = 1;
+  13   1      }
+  14          
+  15          bit busy = 0;
+  16          unsigned char xdata uart_rx_buf[25] = {0};
+  17          unsigned char xdata uart_rx_cnt = 0;
+  18          unsigned char xdata uart_rx_flag = 0; //为1定义为接收到了一个指令
+  19          void UartIsr() interrupt 4
+  20          {
+  21   1              if (TI) //发送完成
+  22   1              {
+  23   2                      TI = 0;
+  24   2                      
+  25   2                      busy = 0;
+  26   2              }
+  27   1              
+  28   1              if (RI) //收到了
+  29   1              {
+  30   2                      RI = 0;
+  31   2                      
+  32   2                      uart_rx_buf[uart_rx_cnt] = SBUF; //先保存读到的数据
+  33   2                      
+  34   2                      if (uart_rx_buf[uart_rx_cnt] == '\n' && 
+  35   2                              uart_rx_buf[uart_rx_cnt - 1] == '\r') //判断帧尾
+  36   2                      {
+  37   3                              uart_rx_flag = 1;                                                                       //已经读到了一个指令
+  38   3                              uart_rx_buf[++uart_rx_cnt] = 0;         //字符串截至位
+  39   3                      }
+  40   2                      
+  41   2                      if (++uart_rx_cnt >= 25)        //限制一下接收大小
+  42   2                      {
+  43   3                              uart_rx_cnt = uart_rx_flag = uart_rx_buf[0] = 0;
+  44   3                      }
+  45   2              }
+  46   1      }
+  47          
+  48          /*----------------------------
+  49          发送串口数据
+  50          ----------------------------*/
+  51          void SendData(uint8_t dat)
+  52          {
+  53   1              while (busy);               //等待前面的数据发送完成
+  54   1              busy = 1;
+C51 COMPILER V9.60.0.0   UART                                                              04/06/2024 22:03:37 PAGE 2   
+
+  55   1              SBUF = dat;                 //写数据到UART数据寄存器
+  56   1      }
+  57          
+  58          /*----------------------------
+  59          发送字符串
+  60          ----------------------------*/
+  61          void SendString(char *s)
+  62          {
+  63   1          while (*s)                  //检测字符串结束标志
+  64   1          {
+  65   2              SendData(*s++);         //发送当前字符
+  66   2          }
+  67   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    203    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     27    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       3
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

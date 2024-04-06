@@ -1,0 +1,1 @@
+"echo.c" OPTIMIZE (8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\echo.lst) OBJECT(.\Objects\echo.obj)

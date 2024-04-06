@@ -1,0 +1,420 @@
+C51 COMPILER V9.60.0.0   HARDWARE                                                          04/06/2024 22:03:37 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE HARDWARE
+OBJECT MODULE PLACED IN .\Objects\hardware.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE hardware.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\
+                    -hardware.lst) OBJECT(.\Objects\hardware.obj)
+
+line level    source
+
+   1          #include "hardware.h"
+   2          
+   3          /* NE555频率计数器 */
+   4          void NE555Init(void)
+   5          {
+   6   1              TMOD &= 0xF0;   //定时器0模式复位
+   7   1              TMOD |= 0x04;   //设置为计数模式，计数引脚为P34
+   8   1              TL0 = 0x00;             //复位初始值
+   9   1              TH0 = 0x00;             //复位初始值
+  10   1              TF0 = 0;                        //清除TF0标志
+  11   1              TR0 = 1;                        //定时器0开始计时
+  12   1      }
+  13          
+  14          /* ledpwm、数码管、继电器、蜂鸣器，以及各种周期延时均使用这个定时器 */
+  15          void Timer1Init(void)           //100微秒@12.000MHz
+  16          {
+  17   1              AUXR |= 0x40;           //定时器时钟1T模式
+  18   1              TMOD &= 0x0F;           //设置定时器模式
+  19   1              TL1 = 0x50;             //设置定时初始值
+  20   1              TH1 = 0xFB;             //设置定时初始值
+  21   1              TF1 = 0;                //清除TF1标志
+  22   1              TR1 = 1;                //定时器1开始计时
+  23   1              ET1 = 1;
+  24   1      }
+  25          /*led*/
+  26          uint8_t xdata led_buf = 0x00;//每个led的状态
+  27          //uint8_t xdata led_state = 0; 
+  28          uint8_t xdata led_pwm_cnt = 0;  //led的pwm计数器
+  29          uint8_t xdata led_pwm_duty = 10; //led的pwm占空比，默认满占空比，占空比不能超过周期
+  30          uint8_t xdata led_pwm_period = 10; //led的pwm周期（单位就是定时器的周期，这里是100us）
+  31          
+  32          void led_output(uint8_t led_buf)
+  33          {
+  34   1              P0 = ~led_buf;
+  35   1              P2 |= 0x80;
+  36   1              P2 &= 0x1f;
+  37   1      }
+  38          
+  39          /*dig*/
+  40          /*************  本地常量声明    **************/
+  41          uint8_t code t_display[]={                       //标准字库
+  42          //   0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
+  43              0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F,0x77,0x7C,0x39,0x5E,0x79,0x71,
+  44          //black  -     H    J    K    L    N    o   P    U     t    G    Q    r   M    y
+  45              0x00,0x40,0x76,0x1E,0x70,0x38,0x37,0x5C,0x73,0x3E,0x78,0x3d,0x67,0x50,0x37,0x6e,
+  46          //       0.   1.   2.   3.   4.   5.   6.   7.   8.   9.   -1
+  47              0xBF,0x86,0xDB,0xCF,0xE6,0xED,0xFD,0x87,0xFF,0xEF,0x46};
+  48          
+  49          uint8_t code T_COM[]={0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80};      //位码
+  50          
+  51          uint8_t xdata dig_com = 0; //当前显示的数码管位
+  52          uint8_t xdata dig_buf[SCREEN_NUM][8] = 
+  53          {
+  54                  { 16, 16, 16, 16, 16, 16, 16, 16, },    //黑屏界面
+C51 COMPILER V9.60.0.0   HARDWARE                                                          04/06/2024 22:03:37 PAGE 2   
+
+  55                  { 25, 1, 16, 16, 16, 16, 16, 16, },     //界面1
+  56                  { 25, 2, 16, 16, 16, 16, 16, 16, },     //界面2
+  57                  { 25, 3, 16, 16, 16, 16, 16, 16, },     //界面3
+  58                  { 25, 4, 16, 16, 16, 16, 16, 16, },     //界面4
+  59                  { 25, 5, 16, 16, 16, 16, 16, 16, },     //界面5
+  60                  { 25, 6, 16, 16, 16, 16, 16, 16, },     //界面6
+  61          };
+  62          uint8_t xdata *digs = dig_buf[0]; //当前显示界面
+  63          uint8_t xdata dig_switch = 0xFF; //数码管每一位的开关
+  64          void dig_output()
+  65          {
+  66   1              static unsigned char dig_com = 0;
+  67   1              
+  68   1              P0 = 0x00; //消影
+  69   1              P2 |= 0xC0;
+  70   1              P2 &= ~0xE0;
+  71   1              
+  72   1              P0 = ~t_display[digs[dig_com]]; //段选
+  73   1              P2 |= 0xE0;
+  74   1              P2 &= ~0xE0;
+  75   1              
+  76   1              P0 = T_COM[dig_com]; //位选
+  77   1              P2 |= 0xC0;
+  78   1              P2 &= ~0xE0;
+  79   1              
+  80   1              if (++dig_com >= 8)
+  81   1              {
+  82   2                      dig_com = 0;
+  83   2              }
+  84   1      }
+  85          
+  86          /*key*/
+  87          unsigned char key_value = 0; //按键键值
+  88          unsigned char key_state = 0; //按键状态
+  89          /* 每大概10ms调用一次 */
+  90          void key_scan_v2()
+  91          {
+  92   1              P3 |= 0x0F;
+  93   1              if (~P3 & 0x0F) // 如果有按键按下
+  94   1              {
+  95   2                      /* 按键状态更新 */
+  96   2                      if (key_state < 255)
+  97   2                              key_state++;
+  98   2                      
+  99   2                      /* 按键键值判断 */
+ 100   2                      if (P33 == 0)
+ 101   2                              key_value = 4;
+ 102   2                      if (P32 == 0)
+ 103   2                              key_value = 5;
+ 104   2                      if (P31 == 0)
+ 105   2                              key_value = 6;
+ 106   2                      if (P30 == 0)
+ 107   2                              key_value = 7;
+ 108   2              }
+ 109   1              else //如果没有按键按下
+ 110   1              {
+ 111   2                      key_value = 0;
+ 112   2                      key_state = 0;
+ 113   2              }
+ 114   1      }
+ 115          //矩阵按键偷懒三行形式
+ 116          unsigned char xdata ReadData=0;
+C51 COMPILER V9.60.0.0   HARDWARE                                                          04/06/2024 22:03:37 PAGE 3   
+
+ 117          unsigned char xdata trg=0;
+ 118          unsigned char xdata cnt=0;
+ 119          void KeyAction()  //测试长按键    独立式键盘 S4--S7
+ 120          {
+ 121   1                      static unsigned char cont_count = 0;    
+ 122   1                      unsigned char xdata ReadData;
+ 123   1                      ReadData = P3^0xff;
+ 124   1                      trg = ReadData&(ReadData^cnt);//单次触发判断
+ 125   1                      cnt = ReadData;//长按判断
+ 126   1      
+ 127   1                      if(trg & 0x01)                  //按下S7
+ 128   1                      {
+ 129   2      //                      freg += 1;
+ 130   2                      }
+ 131   1                      else if(trg & 0x02)             //按下S6
+ 132   1                      {
+ 133   2              //              freg -= 1;
+ 134   2                      }               
+ 135   1                      
+ 136   1                      else if(trg & 0x04)             //按下S5
+ 137   1                      {
+ 138   2              //              freg -= 1;
+ 139   2                      }               
+ 140   1                      
+ 141   1                      else if(trg & 0x08)             //按下S4
+ 142   1                      {
+ 143   2              //              freg -= 1;
+ 144   2                      }               
+ 145   1                      
+ 146   1                      
+ 147   1                      else if(cnt & 0x01)          //长按S7  1S
+ 148   1                      {
+ 149   2                              if(++cont_count == 100)
+ 150   2                              {
+ 151   3                                              cont_count = 0;
+ 152   3              //                              freg += 10;
+ 153   3                              }
+ 154   2                      }
+ 155   1      }
+ 156          /* 一般都是10ms左右调用一次，
+ 157                   10ms为消抖时间，可以根据需要更改 */
+ 158          unsigned char code key_values[][4] = 
+ 159          {
+ 160                  {19, 18, 17, 16, }, 
+ 161                  {15, 14, 13, 12, }, 
+ 162                  {11, 10, 9, 8, }, 
+ 163                  {7, 6, 5, 4, }, 
+ 164          };
+ 165          void key_pad_scan_v1()
+ 166          {
+ 167   1              unsigned char R = 255, C = 255;
+ 168   1              
+ 169   1              P3 = 0x0F;
+ 170   1              P4 = 0x00;
+ 171   1              
+ 172   1              if (~P3 & 0x0F)
+ 173   1              {
+ 174   2                      /* 按键状态更新 */
+ 175   2                      if (key_state < 255)
+ 176   2                              key_state++;
+ 177   2                      
+ 178   2                      /* 按键键值判断 */
+C51 COMPILER V9.60.0.0   HARDWARE                                                          04/06/2024 22:03:37 PAGE 4   
+
+ 179   2                      if (!P30) R = 0;
+ 180   2                      if (!P31) R = 1;
+ 181   2                      if (!P32) R = 2;
+ 182   2                      if (!P33) R = 3;
+ 183   2                      
+ 184   2                      P3 = 0xF0;
+ 185   2                      P4 = 0xFF;
+ 186   2                      
+ 187   2                      if (!P34) C = 0;
+ 188   2                      if (!P35) C = 1;
+ 189   2                      if (!P42) C = 2;
+ 190   2                      if (!P44) C = 3;
+ 191   2                      
+ 192   2                      if (R != 255 && C != 255)
+ 193   2                      {
+ 194   3                              key_value = key_values[C][R];
+ 195   3                      }
+ 196   2                      else
+ 197   2                      {
+ 198   3                              key_value = key_state = 0;
+ 199   3                      }
+ 200   2              }
+ 201   1              else
+ 202   1              {
+ 203   2                      key_value = key_state = 0;
+ 204   2              }
+ 205   1      }
+ 206          
+ 207          void key_pad_scan_v2()//使用串口时，不扫描串口P30,P31||使用Ne555时，不扫描P34
+ 208          {
+ 209   1              unsigned char R = 255, C = 255;
+ 210   1              
+ 211   1      //      P3 = 0x0F;
+ 212   1              P3 |= 0x08;
+ 213   1              P3 &= ~0xF0;
+ 214   1              P4 = 0x00;
+ 215   1              
+ 216   1              if (~P3 & 0x0F)
+ 217   1              {
+ 218   2                      /* 按键状态更新 */
+ 219   2                      if (key_state < 255)
+ 220   2                              key_state++;
+ 221   2                      
+ 222   2                      /* 按键键值判断 */
+ 223   2                      if (!P30) R = 0;
+ 224   2                      if (!P31) R = 1;
+ 225   2                      if (!P32) R = 2;
+ 226   2                      if (!P33) R = 3;
+ 227   2                      
+ 228   2      //              P3 = 0xF0;
+ 229   2                      P3 |= 0xF0;
+ 230   2                      P3 &= ~0x08;
+ 231   2                      P4 = 0xFF;
+ 232   2                      
+ 233   2                      if (!P34) C = 0;
+ 234   2                      if (!P35) C = 1;
+ 235   2                      if (!P42) C = 2;
+ 236   2                      if (!P44) C = 3;
+ 237   2                      
+ 238   2                      if (R != 255 && C != 255)
+ 239   2                      {
+ 240   3                              key_value = key_values[C][R];
+C51 COMPILER V9.60.0.0   HARDWARE                                                          04/06/2024 22:03:37 PAGE 5   
+
+ 241   3                      }
+ 242   2                      else
+ 243   2                      {
+ 244   3                              key_value = key_state = 0;
+ 245   3                      }
+ 246   2              }
+ 247   1              else
+ 248   1              {
+ 249   2                      key_value = key_state = 0;
+ 250   2              }
+ 251   1      }
+ 252          void key_pad_scan_v3()//长短按
+ 253          {
+ 254   1              unsigned char R = 255, C = 255;
+ 255   1              
+ 256   1      //      P3 = 0x0F;
+ 257   1              P3 |= 0x08;
+ 258   1              P3 &= ~0xF0;
+ 259   1              P4 = 0x00;
+ 260   1              
+ 261   1              if (~P3 & 0x0F)
+ 262   1              {
+ 263   2                      /* 按键状态更新 */
+ 264   2                      if (key_state < 255)
+ 265   2                              key_state++;
+ 266   2                      
+ 267   2                      /* 按键键值判断 */
+ 268   2                      if (!P30) R = 0;
+ 269   2                      if (!P31) R = 1;
+ 270   2                      if (!P32) R = 2;
+ 271   2                      if (!P33) R = 3;
+ 272   2                      
+ 273   2      //              P3 = 0xF0;
+ 274   2                      P3 |= 0xF0;
+ 275   2                      P3 &= ~0x08;
+ 276   2                      P4 = 0xFF;
+ 277   2                      
+ 278   2                      if (!P34) C = 0;
+ 279   2                      if (!P35) C = 1;
+ 280   2                      if (!P42) C = 2;
+ 281   2                      if (!P44) C = 3;
+ 282   2                      
+ 283   2                      if (R != 255 && C != 255)
+ 284   2                      {
+ 285   3                              key_value = key_values[C][R];
+ 286   3                      }
+ 287   2                      else
+ 288   2                      {
+ 289   3                              key_value = key_state = 0;
+ 290   3                      }
+ 291   2              }
+ 292   1              else
+ 293   1              {
+ 294   2                      if (key_value && key_state <= 250) //如果按键刚松开
+ 295   2                      {
+ 296   3                              if (key_state < 100) //若按下到松手时间没有超过1秒
+ 297   3                                      key_state = 255;
+ 298   3                              else if (key_state < 200) //若按下到松手时间超过1秒而没超过2秒
+ 299   3                                      key_state = 254;
+ 300   3                              else //若按下到松手时间超过2秒
+ 301   3                                      key_state = 253;
+ 302   3                      }
+C51 COMPILER V9.60.0.0   HARDWARE                                                          04/06/2024 22:03:37 PAGE 6   
+
+ 303   2                      else //按键完全松开
+ 304   2                      {
+ 305   3                              key_value = 0;
+ 306   3                              key_state = 0;
+ 307   3                      }
+ 308   2              }
+ 309   1      }
+ 310          
+ 311          /* 大功率外设状态 */
+ 312          uint8_t xdata high_power_state = 0;
+ 313          
+ 314          /* 虚拟定时器 */
+ 315          uint8_t xdata Timer10ms_cnt = 0;
+ 316          uint8_t xdata Timer50ms_cnt = 0;
+ 317          uint8_t xdata Timer100ms_cnt = 0;
+ 318          uint16_t xdata Timer500ms_cnt = 0;
+ 319          uint16_t xdata Timer1s_cnt = 0;
+ 320          uint16_t xdata Timern_cnt = 0;
+ 321          uint16_t xdata operate_timer_cnt = 0; //操作周期定时器，用来错开每个时序操作防止时序混乱，需要根据操作的芯
+             -片数量来决定定时器周期
+ 322          
+ 323          /* NE555频率 */
+ 324          uint16_t xdata ne555_out = 0;
+ 325          
+ 326          void Timer1Isr(void) interrupt 3 //100us一周期
+ 327          {
+ 328   1              static uint8_t Timer1ms_cnt = 10;
+ 329   1              static uint16_t ne555_cnt = 100; //ne555专用的定时器，可以调整采样周期
+ 330   1      
+ 331   1              { //LED_PWM
+ 332   2                      if (led_pwm_cnt <= led_pwm_duty) //有效电平
+ 333   2                      {
+ 334   3                              CHANNLE(4, ~led_buf);
+ 335   3                              //led_output(led_buf);
+ 336   3                      }
+ 337   2                      else //无效电平
+ 338   2                      {
+ 339   3                              CHANNLE(4, 0xFF); //关闭LED
+ 340   3                              //led_output(0x00);
+ 341   3                      }
+ 342   2                      if (++led_pwm_cnt >= led_pwm_period)
+ 343   2                              led_pwm_cnt = 0;
+ 344   2              }
+ 345   1              
+ 346   1              if (++Timer1ms_cnt >= 10) //1ms
+ 347   1              {
+ 348   2                      Timer1ms_cnt = 0;
+ 349   2                      
+ 350   2                      Timer10ms_cnt++;
+ 351   2                      Timer50ms_cnt++;
+ 352   2                      operate_timer_cnt++;
+ 353   2                      Timer100ms_cnt++;
+ 354   2                      Timer500ms_cnt++;
+ 355   2                      Timer1s_cnt++;
+ 356   2                      Timern_cnt++;
+ 357   2                      
+ 358   2                      { //数码管
+ 359   3                              CHANNLE(6, 0x00);
+ 360   3                              CHANNLE(7, ~t_display[digs[dig_com]]); //关键步骤
+ 361   3                              CHANNLE(6, T_COM[dig_com] & dig_switch); //关键步骤 根据这一位数码管开关来决定是否显示
+ 362   3                              if (++dig_com >= 8)
+ 363   3                                      dig_com = 0;
+C51 COMPILER V9.60.0.0   HARDWARE                                                          04/06/2024 22:03:37 PAGE 7   
+
+ 364   3                      }
+ 365   2                      //dig_output();
+ 366   2                      if (++ne555_cnt >= 100)
+ 367   2                      {
+ 368   3                              ne555_cnt = 0;
+ 369   3                              
+ 370   3                              TR0 = 0;                //定时器0暂停计数
+ 371   3                              ne555_out = TH0 << 8 | TL0;
+ 372   3                              TL0 = 0x00;     //复位初始值
+ 373   3                              TH0 = 0x00;     //复位初始值
+ 374   3                              TR0 = 1;                //定时器0开始计数
+ 375   3      //                      ne555_out *= 10;
+ 376   3                      }
+ 377   2                      
+ 378   2                      //大功率外设
+ 379   2                      CHANNLE(5, high_power_state);
+ 380   2              }
+ 381   1      }
+ 382          
+ 383          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    961    ----
+   CONSTANT SIZE    =     67    ----
+   XDATA SIZE       =     79       1
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      9    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

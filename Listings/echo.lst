@@ -1,0 +1,261 @@
+C51 COMPILER V9.60.0.0   ECHO                                                              04/06/2024 22:03:37 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE ECHO
+OBJECT MODULE PLACED IN .\Objects\echo.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE echo.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\echo
+                    -.lst) OBJECT(.\Objects\echo.obj)
+
+line level    source
+
+   1          #include "echo.h"
+   2          
+   3          //echo ¶¨Ê±Æ÷0°æ±¾,¿É×ÔÐÐ¸ü¸Ä¶¨Ê±Æ÷
+   4          #ifdef echo_timer
+              void Delay14us()                //@12.000MHz
+              {
+                      unsigned char i;
+              
+                      _nop_();
+                      _nop_();
+                      i = 39;
+                      while (--i);
+              }
+              
+              int read_distance()//Ö»¼ÆÊ±10000us
+              {
+                      int distance = -1;
+                      unsigned int temp;
+                      
+                      AUXR &= 0x7F;           //¶¨Ê±Æ÷Ê±ÖÓ12TÄ£Ê½
+                      TMOD &= 0xF0;           //ÉèÖÃ¶¨Ê±Æ÷Ä£Ê½
+                      TL0 = 0xEF;             //ÉèÖÃ¶¨Ê±³õÊ¼Öµ
+                      TH0 = 0xD8;             //ÉèÖÃ¶¨Ê±³õÊ¼Öµ
+                      TF0 = 0;                //Çå³ýTF0±êÖ¾
+                      
+                      P10 = 1; Delay14us(); P10 = 0; Delay14us(); 
+                      P10 = 1; Delay14us(); P10 = 0; Delay14us(); 
+                      P10 = 1; Delay14us(); P10 = 0; Delay14us(); 
+                      P10 = 1; Delay14us(); P10 = 0; Delay14us(); 
+                      P10 = 1; Delay14us(); P10 = 0; Delay14us(); 
+                      P10 = 1; Delay14us(); P10 = 0; Delay14us(); 
+                      P10 = 1; Delay14us(); P10 = 0; Delay14us(); 
+                      P10 = 1; Delay14us(); P10 = 0; Delay14us(); 
+                      
+                      TR0 = 1;                //¶¨Ê±Æ÷0¿ªÊ¼¼ÆÊ±
+                      while((P11 == 1) && (TF0 == 0));
+                      TR0 = 0;
+                      
+                      if (TF0 == 0)
+                      {
+                              temp = TH0 << 8 | TL0;
+                              distance = (temp - 55535) * 0.17F;
+                      }
+                      
+                      return distance;
+              }
+              
+              #endif
+  49          
+  50          #ifdef echo_pca_1
+  51          sbit trig=P1^0;   //¶¨Òå·¢ËÍ¶Ë
+  52          sbit echo=P1^1;   //¶¨Òå½ÓÊÕ¶Ë
+  53          unsigned int dis;      //¾àÀëÊý¾Ý
+  54          void Delay13us()                //@12.000MHz
+C51 COMPILER V9.60.0.0   ECHO                                                              04/06/2024 22:03:37 PAGE 2   
+
+  55          {
+  56   1              unsigned char i;
+  57   1      
+  58   1              _nop_();
+  59   1              _nop_();
+  60   1              i = 36;
+  61   1              while (--i);
+  62   1      }
+  63          
+  64          void Send_Wave()  //²úÉúÒ»¸ö40Khz·½²¨
+  65          {
+  66   1              unsigned char i;
+  67   1              for(i=0;i<8;i++)
+  68   1              {
+  69   2                      trig=1;
+  70   2                      Delay13us();
+  71   2                      trig=0;
+  72   2                      Delay13us();
+  73   2              }
+  74   1      }
+  75          
+  76          unsigned int Get_Csb()
+  77          {
+  78   1              
+  79   1              unsigned int dis;
+  80   1              CMOD&=0x00;   //1mhz
+  81   1      //      CH=0x00;      //¼ÆÊý¸ß°ËÎ»¶¨Ê±12T10001us
+  82   1      //      CL=0x00;      //¼ÆÊýµÍ°ËÎ»
+  83   1              CH=0x8D;      //¼ÆÊý¸ß°ËÎ»¶¨Ê±12T10001us
+  84   1              CL=0x1C;      //¼ÆÊýµÍ°ËÎ»
+  85   1              Send_Wave();  //·¢ËÍ40Khz²¨
+  86   1              CR=1;     //¿ªÊ¼¼ÆÊ±
+  87   1              while((echo==1)&&(CF==0));//µÈ´ý½ÓÊÕ¶Ë½ÓÊÕµ½·µ»ØÐÅºÅ»òÕßÒç³ö
+  88   1              CR=0; //¹Ø±Õ¼ÆÊ±
+  89   1              if(CF==0) //Èç¹ûÎ´³¬³ö²âÁ¿·¶Î§£¬½øÐÐÊý¾Ý´¦Àí
+  90   1              {
+  91   2                      //dis=((CH << 8 | CL)-0x8D1C) * 0.017;//cm
+  92   2                      dis=(unsigned int)((CH << 8 | CL)-0x8d1c) * 0.017;//cm
+  93   2              }
+  94   1              else  //Èç¹û³¬³ö²âÁ¿·¶Î§£¬Òç³ö±êÖ¾Î»»áÓ²¼þÖÃÒ»£¬ÎÒÃÇÐèÒªÔÚ´ËÈí¼þÇåÁã
+  95   1              {
+  96   2                  CF=0;  //Òç³ö±êÖ¾Î»ÇåÁã
+  97   2                      dis=0;
+  98   2              }
+  99   1              return  dis;
+ 100   1      }
+ 101          
+ 102          
+ 103          
+ 104          #endif
+ 105          
+ 106          //echo pca°æ±¾
+ 107          #ifdef echo_pca_2
+              /* Èç¹ûÄã·¢ÏÖ²â¾àµÄÁ¿³ÌºÜ¶Ì£¬ÄÇÄãÓ¦¸Ã¿´¿´
+                       ÏÂÔØµÄÊ±ºòIRCÆµÂÊÓÐÃ»ÓÐµ÷³É12.000MHz£¬
+                       ¶ø²»ÊÇÀ´ÖÊÒÉÎÒµÄ´úÂë (>w<) */
+              void Delay13us()                //@12.000MHz
+              {
+                      unsigned char i;
+              
+                      _nop_();
+                      _nop_();
+C51 COMPILER V9.60.0.0   ECHO                                                              04/06/2024 22:03:37 PAGE 3   
+
+                      i = 36;
+                      while (--i);
+              }
+              
+              void TimerPCAInit()
+              {
+                      CCON = 0;       //³õÊ¼»¯PCA¿ØÖÆ¼Ä´æÆ÷
+                                                              //PCA¶¨Ê±Æ÷Í£Ö¹
+                                                              //Çå³ýCF±êÖ¾
+                                                              //Çå³ýÄ£¿éÖÐ¶Ï±êÖ¾
+                      CMOD = 0x01;            //ÉèÖÃPCAÊ±ÖÓÔ´ 1MHz
+                                                                                      //¿ªÆôPCA¶¨Ê±Æ÷Òç³öÖÐ¶Ï
+                      CCAPM0 = 0x11;  //PCAÄ£¿é0ÎªÏÂ½µÑØ´¥·¢
+                                                                                      //ÀûÓÃÂö³å²¶»ñÀ´Ä£ÄâP11ÏÂ½µÑØÍâ²¿ÖÐ¶Ï
+              }
+              
+              /* ultrasonic_flag ³¬Éù²¨×´Ì¬±êÖ¾
+                       0£º¿ÕÏÐ½×¶Î
+                       1£º·¢ËÍ½×¶Î
+                       2£ºÈ·ÈÏ½ÓÊÕµ½·µ»ØµÄ³¬Éù²¨
+                       3£º½ÓÊÕ²»µ½³¬Éù²¨£¬»ò³¬³öÁ¿³Ì */
+              uint8_t ultrasonic_flag = 0;
+              uint16_t distance = 0;
+              
+              /* P11£¬¼´³¬Éù²¨RX£¬Ò»µ©³öÏÖÏÂ½µÑØ£¬
+                       ÔòËµÃ÷ÒÑ¾­ÊÕµ½·µ»ØµÄ³¬Éù²¨£¬½øÈë´ËÖÐ¶Ï */
+              void TimerPCAIsr() interrupt 7
+              {
+                      CR = 0; //ÓÅÏÈ½áÊø¼ÆÊ±
+                      
+                      if (ultrasonic_flag == 1) //µ±´¦ÓÚ·¢ËÍ½×¶Î
+                      {
+                              if (CCF0) /* ½ÓÊÕµ½·µ»ØµÄ³¬Éù²¨ */
+                                      ultrasonic_flag = 2; //È·ÈÏ½ÓÊÕµ½·µ»ØµÄ³¬Éù²¨
+                              else if (CF) /* ³¬³öÁ¿³Ì */
+                                      ultrasonic_flag = 3; //½ÓÊÕ²»µ½³¬Éù²¨£¬»ò³¬³öÁ¿³Ì
+                              else
+                                      ultrasonic_flag = 0; //ÒâÍâÇé¿ö
+                      }
+              //      else ÕâÀï±¾Ó¦¸Ã¼ÓÕâ¸öelse£¬µ«ÓÐbug£¬ÎÒÔÝÊ±ÕÒ²»µ½
+              //              ultrasonic_flag = 0; //ÒâÍâÇé¿ö
+                      
+                      CF = 0;
+                      CCF0 = 0;
+                      CCF1 = 0; //ÕâÁ½¸ö±êÖ¾Î»ËäÈ»Ã»ÓÐÓÃµ½
+                      CCF2 = 0; //µ«ÊÇÒÔ·ÀÍòÒ»£¬µ¼ÖÂÖÐ¶Ï¿¨×¡
+              }
+              
+              /* ³¬Éù²¨·¢ËÍ */
+              void sand_ultrasonic()
+              { //¼ÆÊ±ÔÚÇ°»¹ÊÇ·¢ËÍÔÚÇ°¶¼¿ÉÒÔ£¬ÔÚÎÒµÄ°å×ÓÉÏÎÒ·¢ÏÖ¼ÆÊ±ÔÚÇ°µÄÊý¾Ý±È½Ï×¼È·
+                      /* Æô¶¯¼ÆÊ± */
+                      CH = 0x8D;              //ÉèÖÃ¶¨Ê±³õÊ¼Öµ£¬Õâ¸öÖµÊÇÕâÃ´À´µÄ£º0x8D1C ¡Ö 65535 - 500£¨ÀåÃ×£© / 0.017£¨ÀåÃ×/Î¢Ãë£©£¬Ïë¸ÄÁ
+             -¿³Ì¿ÉÒÔ×Ô¼ºËã
+                      CL = 0x1C;              //ÉèÖÃ¶¨Ê±³õÊ¼Öµ
+                      /* ¾­¹ý²âÊÔ£¬°å×ÓÄÜ²âµÄ×î³¤¾àÀëÊÇ4Ã×£¨ÖÁÉÙÎÒÕâ¿é°å×ÓÊÇÕâÑù£©£¬
+                               ¶ø¶¨Ê±Æ÷µÄÀíÂÛÁ¿³ÌÔ¶³¬4Ã×£¬ËùÒÔÉèÖÃ³õÖµµÄÒâÒåÔÚÓÚËõ¶ÌÁ¿³Ì
+                               £¨´ó¸ÅËõ¼õµ½5Ã×£©£¬ÒÔ´ËÀ´¼õÉÙ²»±ØÒªµÄ²âÁ¿Ê±¼ä£¬
+                               ËùÒÔ³¬Éù²¨´«²¥µÄÊ±¼ä¾ÍÊÇÖÕÖµ¼õ³õÖµ */
+                      CF = 0;         //Çå³ýCF±êÖ¾
+                      
+                      /* Æô¶¯³¬Éù²¨·¢ËÍ */
+C51 COMPILER V9.60.0.0   ECHO                                                              04/06/2024 22:03:37 PAGE 4   
+
+                      EA = 0; //¹Ø±ÕÖÐ¶Ï£¬·ÀÖ¹´ò¶Ï·¢ËÍ
+                      CR = 1; //¶¨Ê±Æ÷¿ªÊ¼¼ÆÊ±
+                      P10 = 1; Delay13us(); P10 = 0; Delay13us(); //¸ßµçÆ½ÔÚÇ°µÍµçÆ½ÔÚºó
+                      P10 = 1; Delay13us(); P10 = 0; Delay13us();
+                      P10 = 1; Delay13us(); P10 = 0; Delay13us();
+                      P10 = 1; Delay13us(); P10 = 0; Delay13us();
+                      P10 = 1; Delay13us(); P10 = 0; Delay13us();
+                      P10 = 1; Delay13us(); P10 = 0; Delay13us();
+                      P10 = 1; Delay13us(); P10 = 0; Delay13us();
+                      P10 = 1; Delay13us(); P10 = 0; //ÓÐÊ±ºò£¬×öÈËÒªÖ±½ÓÒ»µã£¨Ö¸Ö±½Ó¸´ÖÆ8´Î£©
+                      EA = 1; //ÖØÐÂ´ò¿ªÖÐ¶Ï
+              }
+              
+              /* ¼ÆËã¾àÀë */
+              void calculate_distance()
+              {
+                      if (ultrasonic_flag == 2) //È·ÈÏ½ÓÊÕµ½·µ»ØµÄ³¬Éù²¨
+                      {
+              //              distance = CCAP0H;
+              //              distance <<= 8;
+              //              distance |= CCAP0L;
+              //              distance -= 0x8D1C; //¼õµô¶¨Ê±Æ÷³õÖµ£¬¼õÈ¥³õÖµÔ­ÒòÔÚÉèÖÃ³õÖµµÄµØ·½ÓÐ×¢½â
+              //              distance = (float)distance * 0.017;
+                              distance = ((CCAP0H << 8 | CCAP0L) - 0x8D1C) * 0.017;
+                      }
+                      else //½ÓÊÕ²»µ½³¬Éù²¨£¬»ò³¬³öÁ¿³Ì
+                      {
+                              distance = DISTANCE_OUTRANG;
+                      }
+              }
+              
+              /* ¶ÁÈ¡¾àÀëº¯Êý
+                       ²»Ò»¶¨ÐèÒªÕâÃ´Ð´
+                       ¿ÉÒÔ¸ü¾ÝÉÏÃæÁ½¸öº¯Êý×ÔÐÐÐÞ¸Ä */
+              void read_distance()
+              { //¿ÉÄÜÄã»á¾õµÃÕâ¸öº¯ÊýÐ´µÄ²»ºÃ£¬µ«ÕâÓ¦¸ÃÊÇ×î¼òµ¥µÄÐ´·¨ÁË
+                      if (ultrasonic_flag > 1)
+                      {
+                              calculate_distance();
+                              ultrasonic_flag = 0; //½øÈë·¢ËÍ½×¶Î
+                      }
+                      
+                      if (ultrasonic_flag == 0)
+                      {
+                              sand_ultrasonic();
+                              ultrasonic_flag = 1; //½øÈë·¢ËÍ½×¶Î
+                      }
+              }
+              
+              #endif
+ 228          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    108    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      2       2
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+C51 COMPILER V9.60.0.0   ECHO                                                              04/06/2024 22:03:37 PAGE 5   
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

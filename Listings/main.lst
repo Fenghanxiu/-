@@ -1,0 +1,319 @@
+C51 COMPILER V9.60.0.0   MAIN                                                              04/06/2024 22:04:29 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include "hardware.h"
+   3          #include "onewire.h"
+   4          #include "iic.h"
+   5          #include "ds1302.h"
+   6          
+   7          #include "uart.h"
+   8          #include "echo.h"
+   9          #include "uart.h"
+  10          
+  11          #include "intrins.h"
+  12          #include "string.h"
+  13          #include "stdio.h"
+  14          void Delay100ms()               //@12.000MHz
+  15          {
+  16   1              unsigned char i, j, k;
+  17   1      
+  18   1              _nop_();
+  19   1              _nop_();
+  20   1              i = 5;
+  21   1              j = 144;
+  22   1              k = 71;
+  23   1              do
+  24   1              {
+  25   2                      do
+  26   2                      {
+  27   3                              while (--k);
+  28   3                      } while (--j);
+  29   2              } while (--i);
+  30   1      }
+  31          
+  32          void main()
+  33          {
+  34   1              unsigned char xdata work_flag = 0;
+  35   1              
+  36   1              unsigned int xdata temperature; //温度的一百倍
+  37   1              unsigned char xdata dac_out_flag = 1;
+  38   1              
+  39   1              unsigned char xdata screen = 0;
+  40   1              unsigned char xdata data_disp = 0;
+  41   1              unsigned char xdata param_disp = 0;
+  42   1              
+  43   1              unsigned char xdata key_value_bak = 0;
+  44   1        unsigned char xdata key_state_bak = 0;
+  45   1              
+  46   1              unsigned char xdata temp_param           = 30;
+  47   1              unsigned char xdata temp_param_bak = 30;
+  48   1              unsigned char xdata dist_param           = 35;  //单位cm
+  49   1              unsigned char xdata dist_param_bak = 35;        //单位cm
+  50   1              unsigned int xdata param_change  = 0;
+  51   1              unsigned int xdata distance=0;
+  52   1              
+  53   1              
+  54   1              char xdata uart_tx_buf[25] = {0};
+C51 COMPILER V9.60.0.0   MAIN                                                              04/06/2024 22:04:29 PAGE 2   
+
+  55   1              
+  56   1              P0 = 0xFF;
+  57   1              P2 = 0x80;
+  58   1              P2 = 0xA0;
+  59   1              P0 = 0x00;
+  60   1              P2 = 0x00;
+  61   1              
+  62   1              e2prom_read(0x21,&param_change,1);
+*** WARNING C182 IN LINE 62 OF main.c: pointer to different objects
+  63   1      
+  64   1              Timer1Init();   //基本（led dig timer）
+  65   1              
+  66   1              UartInit();
+  67   1      
+  68   1              while (1)
+  69   1              {
+  70   2                      if (Timer10ms_cnt >= 10)
+  71   2                      {
+  72   3                              Timer10ms_cnt = 0;
+  73   3      
+  74   3                              /* input */
+  75   3                              key_pad_scan_v2();
+  76   3      
+  77   3                              /* process */
+  78   3                              /* 高级操作 */
+  79   3                              if (Timer50ms_cnt >= 50)
+  80   3                              {
+  81   4                                      Timer50ms_cnt = 0;
+  82   4                                      
+  83   4                                      if (work_flag == 0)
+  84   4                                      {
+  85   5                                              read_temp();
+  86   5                                      }
+  87   4                                      else if (work_flag == 1)
+  88   4                                      {
+  89   5                                              distance=Get_Csb();
+  90   5                                      }
+  91   4                                      else if (work_flag == 2)
+  92   4                                      {
+  93   5                                              if (dac_out_flag)
+  94   5                                              {
+  95   6                                                      write_pcf8591((distance / 10) <= dist_param ? 102 : 204);
+  96   6                                              }
+  97   5                                              else
+  98   5                                              {
+  99   6                                                      write_pcf8591(20);
+ 100   6                                              }
+ 101   5                                      }
+ 102   4                                      else if (work_flag == 3)
+ 103   4                                      {
+ 104   5                                              if (uart_rx_flag) //是否接收到一个指令
+ 105   5                                              {
+ 106   6                                                      uart_rx_flag = 0;
+ 107   6                                                      uart_rx_cnt = 0;
+ 108   6                                                      
+ 109   6                                                      if (strcmp(uart_rx_buf, "ST\r\n") == 0) //查询数据指令
+ 110   6                                                      {
+ 111   7                                                              sprintf(uart_tx_buf, "$%u,%.2f\r\n", distance / 10, (float)temperature / 100.0f);
+ 112   7                                                              SendString(uart_tx_buf);
+ 113   7                                                      }
+ 114   6                                                      else if (strcmp(uart_rx_buf, "PARA\r\n") == 0)
+ 115   6                                                      {
+C51 COMPILER V9.60.0.0   MAIN                                                              04/06/2024 22:04:29 PAGE 3   
+
+ 116   7                                                              sprintf(uart_tx_buf, "#%u,%u\r\n", (unsigned int)dist_param, (unsigned int)temp_param);
+ 117   7                                                              SendString(uart_tx_buf);
+ 118   7                                                      }
+ 119   6                                                      else
+ 120   6                                                      {
+ 121   7                                                              strcpy(uart_tx_buf, "ERROR\r\n");
+ 122   7                                                              SendString(uart_tx_buf);
+ 123   7                                                      }
+ 124   6                                              }
+ 125   5      //                                      UartSandNByte("hello\r\n", 7);
+ 126   5                                      }
+ 127   4                                      else if (work_flag == 4)
+ 128   4                                      {
+ 129   5                                              e2prom_write(0x21, &param_change,1);
+*** WARNING C182 IN LINE 129 OF main.c: pointer to different objects
+ 130   5                                      }
+ 131   4                                      
+ 132   4                                      if (++work_flag >= 4)
+ 133   4                                      {
+ 134   5                                              work_flag = 0;
+ 135   5                                      }
+ 136   4                              }
+ 137   3                              
+ 138   3                              /* 按键判断（松手判断） */
+ 139   3                              if (key_value) //此时按键未松手
+ 140   3                              {
+ 141   4                                      key_value_bak = key_value;
+ 142   4                                      key_state_bak = key_state;
+ 143   4                              }
+ 144   3                              else //此时按键松手
+ 145   3                              {
+ 146   4                                      if (key_state_bak < 100) //短按
+ 147   4                                      {
+ 148   5                                              if (key_value_bak == 13) //切换界面
+ 149   5                                              {
+ 150   6                                                      screen = !screen;
+ 151   6                                                      
+ 152   6                                                      data_disp = 0;
+ 153   6                                                      param_disp = 0;
+ 154   6                                                      
+ 155   6                                                      if (screen == 0) //退回到数据界面时
+ 156   6                                                      {
+ 157   7                                                              if (temp_param != temp_param_bak || 
+ 158   7                                                                      dist_param != dist_param_bak) //如果参数发生改变
+ 159   7                                                              {
+ 160   8                                                                      temp_param = temp_param_bak; //参数更新
+ 161   8                                                                      dist_param = dist_param_bak;
+ 162   8                                                                      
+ 163   8                                                                      param_change++; //参数变动次数++
+ 164   8                                                                      
+ 165   8                                                                      work_flag = 4;
+ 166   8                                                              }
+ 167   7                                                      }
+ 168   6                                              }
+ 169   5                                              
+ 170   5                                              if (screen == 0) //数据界面
+ 171   5                                              {
+ 172   6                                                      if (key_value_bak == 12) //切换显示
+ 173   6                                                      {
+ 174   7                                                              if (++data_disp >= 3)
+ 175   7                                                              {
+ 176   8                                                                      data_disp = 0;
+C51 COMPILER V9.60.0.0   MAIN                                                              04/06/2024 22:04:29 PAGE 4   
+
+ 177   8                                                              }
+ 178   7                                                      }
+ 179   6                                              }
+ 180   5                                              else //参数界面
+ 181   5                                              {
+ 182   6                                                      if (key_value_bak == 12) //切换参数
+ 183   6                                                      {
+ 184   7                                                              param_disp = !param_disp;
+ 185   7                                                      }
+ 186   6                                                      
+ 187   6                                                      if (param_disp == 0) //温度参数
+ 188   6                                                      {
+ 189   7                                                              if (key_value_bak == 16)
+ 190   7                                                                      temp_param_bak -= 2;
+ 191   7                                                              
+ 192   7                                                              if (key_value_bak == 17)
+ 193   7                                                                      temp_param_bak += 2;
+ 194   7                                                      }
+ 195   6                                                      else //距离参数
+ 196   6                                                      {
+ 197   7                                                              if (key_value_bak == 16)
+ 198   7                                                                      dist_param_bak -= 5;
+ 199   7                                                              
+ 200   7                                                              if (key_value_bak == 17)
+ 201   7                                                                      dist_param_bak += 5;
+ 202   7                                                      }
+ 203   6                                              }
+ 204   5                                      }
+ 205   4                                      else //长按
+ 206   4                                      {
+ 207   5                                              if (key_value_bak == 12) //次数归零
+ 208   5                                              {
+ 209   6                                                      param_change = 0;
+ 210   6                                                      work_flag = 4;
+ 211   6                                              }
+ 212   5                                              else if (key_value_bak == 13) //DAC输出改变
+ 213   5                                              {
+ 214   6                                                      dac_out_flag = !dac_out_flag;
+ 215   6                                              }
+ 216   5                                      }
+ 217   4                                      
+ 218   4                                      key_state_bak = key_value_bak = 0; //
+ 219   4                              }
+ 220   3                              
+ 221   3                              /* output */
+ 222   3                              if (screen == 0)
+ 223   3                              {
+ 224   4                                      digs = dig_buf[data_disp];
+ 225   4                              }
+ 226   3                              else
+ 227   3                              {
+ 228   4                                      digs = dig_buf[param_disp + 3];
+ 229   4                              }
+ 230   3                              
+ 231   3                              /* 温度显示 */
+ 232   3                              dig_buf[0][4] = temperature / 1000 % 10;
+ 233   3                              dig_buf[0][5] = temperature / 100 % 10 + 32;
+ 234   3                              dig_buf[0][6] = temperature / 10 % 10;
+ 235   3                              dig_buf[0][7] = temperature % 10;
+ 236   3                              
+ 237   3                              /* 距离显示 */
+ 238   3                              dig_buf[1][6] = distance / 100 % 10;
+C51 COMPILER V9.60.0.0   MAIN                                                              04/06/2024 22:04:29 PAGE 5   
+
+ 239   3                              dig_buf[1][7] = distance / 10 % 10;
+ 240   3                              
+ 241   3                              /* 变更次数 */
+ 242   3                              if (param_change >= 10000)
+ 243   3                                      dig_buf[2][3] = param_change / 10000 % 10;
+ 244   3                              else
+ 245   3                                      dig_buf[2][3] = 16;
+ 246   3                              if (param_change >= 1000)
+ 247   3                                      dig_buf[2][4] = param_change / 1000 % 10;
+ 248   3                              else
+ 249   3                                      dig_buf[2][4] = 16;
+ 250   3                              if (param_change >= 100)
+ 251   3                                      dig_buf[2][5] = param_change / 100 % 10;
+ 252   3                              else
+ 253   3                                      dig_buf[2][5] = 16;
+ 254   3                              if (param_change >= 10)
+ 255   3                                      dig_buf[2][6] = param_change / 10 % 10;
+ 256   3                              else
+ 257   3                                      dig_buf[2][6] = 16;
+ 258   3                              dig_buf[2][7] = param_change % 10;
+ 259   3                              
+ 260   3                              /* 温度参数 */
+ 261   3                              dig_buf[3][6] = temp_param_bak / 10;
+ 262   3                              dig_buf[3][7] = temp_param_bak % 10;
+ 263   3                              
+ 264   3                              /* 距离参数 */
+ 265   3                              dig_buf[4][6] = dist_param_bak / 10;
+ 266   3                              dig_buf[4][7] = dist_param_bak % 10;
+ 267   3                              
+ 268   3                              /* led */
+ 269   3                              if (temperature > (unsigned int)temp_param * 100)
+ 270   3                                      led_buf |= 0x01;
+ 271   3                              else
+ 272   3                                      led_buf &= ~0x01;
+ 273   3                              
+ 274   3                              if ((distance / 10) > dist_param)
+ 275   3                                      led_buf |= 0x02;
+ 276   3                              else
+ 277   3                                      led_buf &= ~0x02;
+ 278   3                              
+ 279   3                              if (dac_out_flag)
+ 280   3                                      led_buf |= 0x04;
+ 281   3                              else
+ 282   3                                      led_buf &= ~0x04;
+ 283   3                      }
+ 284   2              }
+ 285   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1319    ----
+   CONSTANT SIZE    =     65    ----
+   XDATA SIZE       =   ----      42
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  2 WARNING(S),  0 ERROR(S)
